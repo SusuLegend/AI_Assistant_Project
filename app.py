@@ -11,70 +11,12 @@ from dotenv import load_dotenv
 from component import PDFProcessor, PDFDelete, WebScraping, WebDelete, MyDatabase
 
 load_dotenv()
+
+qdrant_host = os.getenv('QDRANT_HOST')
+qdrant_api_key = os.getenv('QDRANT_API_KEY')
+
 UPLOAD_FOLDER = '../Project_AI_assistant/pdf' 
 collection_name = 'university_collection'
-
-def upload_file():
-    file_path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
-    if file_path:
-        filename = os.path.basename(file_path)
-        if filename.lower().endswith('.pdf'):
-            os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-            destination = os.path.join(UPLOAD_FOLDER, filename)
-            shutil.copy(file_path, destination)
-            #directory = '../Project_AI_assistant/pdf'
-            processor = PDFProcessor(collection_name=collection_name)
-            processor.process_file(file_path,filename)
-            status_label.config(text=f'File {filename} uploaded successfully!')
-        else:
-            status_label.config(text='Selected file is not a PDF!')
-
-def delete_file():
-    file_path = filedialog.askopenfilename(initialdir=UPLOAD_FOLDER,filetypes=[("PDF files", "*.pdf")])
-    if os.path.exists(file_path):
-        
-        filename = os.path.basename(file_path)
-        directory = os.path.dirname(file_path)
-        if(filename in os.listdir(directory)): #change this code
-            os.remove(file_path)
-            file_deleted = PDFDelete(collection_name=collection_name)
-            file_deleted.delete_pdf(filename)
-            status_label.config(text=f'File {filename} deleted successfully!')
-        else:
-            status_label.config(text=f'File {filename} is not in a valid path')
-
-def scrap_web():
-    url = web_input.get()
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            # Parse the content of the page with Beautiful Soup
-            soup = BeautifulSoup(response.content, 'html.parser')
-
-            # Extract all text from the page
-            all_text = soup.get_text()
-            scrapingweb = WebScraping(collection_name=collection_name)
-            scrapingweb.scrape_text_from_page(all_text,url)
-            # Return the text
-            status_label.config(text=f"Succesful to retrieve the page. Scrap: {response.status_code}")
-        else:
-            status_label.config(text=f"Failed to retrieve the page. Status code: {response.status_code}")
-    except:
-        status_label.config(text=f"Invalid URL")
-    # Check if the request was successful
-
-def delete_web():
-    url = web_input.get()
-    deleteWeb = WebDelete(collection_name=collection_name, url=url)
-    try:
-        deleteWeb.delete_web()
-        status_label.config(text=f"Succesful to delete web database with url: {url}")
-    except:
-        status_label.config(text=f"Cannot detect weblink in database or url invalid")
-
-
-    # Check if the request was successful
-
 # Create the main window
 
 
@@ -157,7 +99,7 @@ class Managementpage:
         self.web_input = tk.Entry(self.frame, bg="lightblue", width=50)
         self.pdf_label = tk.Label(self.frame, text='PDF Management', bg= '#F8EDFF',font=('Times New Roman', 18, 'bold'))
         self.web_label = tk.Label(self.frame, text='WEB Management', bg= '#F8EDFF',font=('Times New Roman', 18, 'bold'))
-        self.status_label = tk.Label(self.frame, text='',bg='black',fg='white',width=60,height=10)
+        self.status_label = tk.Label(self.frame, text='',bg='black',fg='white',width=30,height=10)
 
         self.pdf_label.place(x=20,y=20)
         self.pdf_upload_button.place(x=20,y=80)
@@ -167,7 +109,7 @@ class Managementpage:
         self.web_upload_button.place(x=20,y=300)
         self.web_delete_button.place(x=100,y=300)
         self.web_input.place(x=20,y=270)
-        self.status_label.place(x=250,y=150)
+        self.status_label.place(x=450,y=150)
 
     def upload_file(self):
         file_path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
@@ -199,9 +141,10 @@ class Managementpage:
                 self.status_label.config(text=f'File {filename} is not in a valid path')
 
     def scrap_web(self):
-        url = web_input.get()
+        url = self.web_input.get()
         try:
             response = requests.get(url)
+            print(response)
             if response.status_code == 200:
                 # Parse the content of the page with Beautiful Soup
                 soup = BeautifulSoup(response.content, 'html.parser')
@@ -209,9 +152,12 @@ class Managementpage:
                 # Extract all text from the page
                 all_text = soup.get_text()
                 scrapingweb = WebScraping(collection_name=collection_name)
-                scrapingweb.scrape_text_from_page(all_text,url)
-                # Return the text
-                self.status_label.config(text=f"Succesful to retrieve the page. Scrap: {response.status_code}")
+                print(scrapingweb.search_data(collection_name,"web",url)[0])
+                if(scrapingweb.search_data(collection_name,"web",url)[0]!=[]):
+                    self.status_label.config(text=f"Web already scraped and in the database")
+                else:
+                    scrapingweb.scrape_text_from_page(all_text,url)
+                    self.status_label.config(text=f"Succesful to retrieve the page. Scrap: {response.status_code}")
             else:
                 self.status_label.config(text=f"Failed to retrieve the page. Status code: {response.status_code}")
         except:
@@ -221,9 +167,14 @@ class Managementpage:
     def delete_web(self):
         url = self.web_input.get()
         deleteWeb = WebDelete(collection_name=collection_name, url=url)
+
         try:
-            deleteWeb.delete_web()
-            self.status_label.config(text=f"Succesful to delete web database with url: {url}")
+            print(deleteWeb.search_data(collection_name,"web",url)[0])
+            if(deleteWeb.search_data(collection_name,"web",url)[0]==[]):
+                self.status_label.config(text=f"No such weblink in the database")
+            else:
+                deleteWeb.delete_web()
+                self.status_label.config(text=f"Succesful to delete web database with url: {url}")
         except:
             self.status_label.config(text=f"Cannot detect weblink in database or url invalid")
 

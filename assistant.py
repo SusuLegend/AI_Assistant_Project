@@ -5,6 +5,7 @@ import openai
 import requests
 import json
 import fitz
+import os
 from functions import univ_functions
 
 load_dotenv()
@@ -14,7 +15,14 @@ assistant_model = "gpt-3.5-turbo"
 
 openai_client = openai.Client()
 
-client = QdrantClient(host="localhost", port=6333)
+qdrant_host = os.getenv('QDRANT_HOST')
+qdrant_api_key = os.getenv('QDRANT_API_KEY')
+
+client = QdrantClient(
+    qdrant_host,
+    api_key= qdrant_api_key,
+)
+
 collection_name = "university_collection"
 
 assistant_name = "Univ Assistant"
@@ -125,19 +133,22 @@ def extract_relevant_pages(results):
 
 def get_weblink(results):
     weblink = ''
+    duplicate = []
     for result in results:
-        if(result.payload['type']=='web'):
+        if(result.payload['type']=='web') and (result.payload['title'] not in duplicate):
             weblink += result.payload['title']
             weblink +='\n'
+            duplicate.append(result.payload['title'])
             #print(result.payload['title'],result.payload['start_page'])
     return weblink
     
-def strapi_search(keyword):
-    r = requests.get(url ="http://localhost:1338/api/universities", headers = {'Authorization': f'Bearer {auth_token}'}).json()['data']
-    for i in range(len(r)):
-        if(r[i]['attributes']['Category'].lower() == keyword.lower()):
-            return r[i]['attributes']['Answer']
-    return None
+def strapi_search(query):
+    query_results = query_qdrant(query, "QNA_collection" , 'Answer')
+    list_str = ""
+    for article in query_results:
+        list_str += f'{article.payload["Answer"]}\n'
+    return list_str 
+
 
 @cl.action_callback("helpful_response")
 async def give_another_action(action):
@@ -202,19 +213,19 @@ async def main(user_message: cl.message):
 
     title = cl.user_session.get("AI_doc")
 
-    try:
-        idea = check_completion(user_input)
-        context = strapi_search(idea)
-        if context is not None:
-            messages[0]['content'] += content
-    except:
-        pass
+    #get from strapi
 
+    context = strapi_search(user_input)
+    messages[0]['content'] += context
+
+
+    #get from  qdrant database
     content, title = get_top_search(user_input, title)
     if content not in messages[0]['content']:
         messages[0]['content'] += content
     cl.user_session.set("AI_doc", title)
         
+    print(messages[0]['content'])
     try:
         completion = openai_client.chat.completions.create(
             model=cl.user_session.get("openai_model"),

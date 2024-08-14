@@ -16,6 +16,13 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 #load OPEN_API
 load_dotenv()
 
+qdrant_host = os.getenv('QDRANT_HOST')
+qdrant_api_key = os.getenv('QDRANT_API_KEY')
+
+qdrantclient = QdrantClient(
+    qdrant_host,
+    api_key= qdrant_api_key,
+)
 
 class PDFProcessor:
     def __init__(self, collection_name, embedding_model="text-embedding-ada-002", assistant_model="gpt-3.5-turbo"):
@@ -23,7 +30,7 @@ class PDFProcessor:
         self.assistant_model = assistant_model
         self.collection_name = collection_name
         self.openai_client = openai.Client()
-        self.qdrant_client = QdrantClient(host="localhost", port=6333)
+        self.qdrant_client = qdrantclient
 
     def convert_embedding(self, texts):
         result = self.openai_client.embeddings.create(input=texts, model=self.embedding_model)
@@ -148,7 +155,7 @@ class PDFDelete:
         self.assistant_model = assistant_model
         self.collection_name = collection_name
         self.openai_client = openai.Client()
-        self.qdrant_client = QdrantClient(host="localhost", port=6333)
+        self.qdrant_client = qdrantclient
 
     def delete_pdf(self, file_name):
         self.qdrant_client.delete(
@@ -167,12 +174,12 @@ class PDFDelete:
         return 0
 
 class WebScraping:
-    def __init__(self, collection_name, embedding_model="text-embedding-ada-002", assistant_model="gpt-3.5-turbo"):
+    def __init__(self, collection_name, qdrantclient = qdrantclient, embedding_model="text-embedding-ada-002", assistant_model="gpt-3.5-turbo"):
         self.embedding_model = embedding_model
         self.assistant_model = assistant_model
         self.collection_name = collection_name
         self.openai_client = openai.Client()
-        self.qdrant_client = QdrantClient(host="localhost", port=6333)
+        self.qdrant_client = qdrantclient
         
     def convert_embedding(self, texts):
         result = self.openai_client.embeddings.create(input=texts, model=self.embedding_model)
@@ -226,7 +233,7 @@ class WebScraping:
 
     def recursive_chunking(self, file):
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1024,
+            chunk_size=2048,
             chunk_overlap=20
         )
 
@@ -238,11 +245,25 @@ class WebScraping:
         x = self.get_next_index(0)
         chunk = self.recursive_chunking(text)
         self.qdrant_embedding(chunk,url,x)
+    
+    def search_data(self,collection_name,data_type,web_url):
+        find1 = self.qdrant_client.scroll(
+            collection_name=collection_name,
+            scroll_filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="title",
+                        match=models.MatchValue(value=web_url),
+                    ),
+                ]
+            ),
+        )
+        return find1
 
 class WebDelete:
-    def __init__(self, collection_name, url):
+    def __init__(self, collection_name, url, qdrantclient = qdrantclient, ):
         self.collection_name = collection_name
-        self.qdrant_client = QdrantClient(host="localhost", port=6333)
+        self.qdrant_client = qdrantclient
         self.url = url
         
     def delete_web(self):
@@ -264,11 +285,25 @@ class WebDelete:
             ),
         )
         return 0
+    
+    def search_data(self,collection_name,data_type,web_url):
+        find1 = self.qdrant_client.scroll(
+            collection_name=collection_name,
+            scroll_filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="title",
+                        match=models.MatchValue(value=web_url),
+                    ),
+                ]
+            ),
+        )
+        return find1
 
 class MyDatabase:
     def __init__(self, collection_name):
         self.collection_name = collection_name
-        self.qdrant_client = QdrantClient(host="localhost", port=6333)
+        self.qdrant_client = qdrantclient
 
     def search_collection(self):
         arr = []
@@ -301,3 +336,6 @@ class MyDatabase:
             ),
         )
         return find1
+
+
+    
